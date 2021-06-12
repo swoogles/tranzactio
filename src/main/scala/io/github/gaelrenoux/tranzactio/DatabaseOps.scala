@@ -20,41 +20,65 @@ trait DatabaseOps[Connection, R0] {
    *
    * This method should be implemented by subclasses, to provide the connection.
    */
+    def transaction[R, E, A](
+        zio: ZIO[Connection with R, E, A],
+        commitOnFailure: Boolean = false
+    )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, Either[DbException, E], A]
+
+  /** @deprecated */
+  @deprecated("Prefer method transaction", since = "2.1.0")
   def transactionR[R <: Has[_], E, A](
       zio: ZIO[Connection with R, E, A],
       commitOnFailure: Boolean = false
-  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, Either[DbException, E], A]
+  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, Either[DbException, E], A] =
+    transaction[R, E, A](zio, commitOnFailure)
 
-  /** As `transactionR`, where the only needed environment is the connection. */
+  /** As `transaction[R, E, A]`, where the only needed environment is the connection. */
   final def transaction[E, A](
       zio: ZIO[Connection, E, A],
       commitOnFailure: Boolean = false
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R0, Either[DbException, E], A] =
-    transactionR[Has[Unit], E, A](zio, commitOnFailure).provideSome(mixHasUnit)
+    transaction[Has[Unit], E, A](zio, commitOnFailure).provideSome(mixHasUnit)
 
-  /** As `transactionR`, but exceptions are simply widened to a common failure type. The resulting failure type is a
+  /** As `transaction[R, E, A]`, but exceptions are simply widened to a common failure type. The resulting failure type is a
    * superclass of both DbException and the error type of the inital ZIO. */
+    final def transactionOrWiden[R, E >: DbException, A](
+        zio: ZIO[Connection with R, E, A],
+        commitOnFailure: Boolean = false
+    )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, E, A] =
+      transaction[R, E, A](zio, commitOnFailure).mapError(_.fold(identity, identity))
+
+  /** @deprecated */
+  @deprecated("Prefer method transactionOrWiden", since = "2.1.0")
   final def transactionOrWidenR[R <: Has[_], E >: DbException, A](
       zio: ZIO[Connection with R, E, A],
       commitOnFailure: Boolean = false
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, E, A] =
-    transactionR[R, E, A](zio, commitOnFailure).mapError(_.fold(identity, identity))
+    transaction[R, E, A](zio, commitOnFailure).mapError(_.fold(identity, identity))
 
-  /** As `transactionOrWiden`, where the only needed environment is the connection. */
+  /** As `transactionOrWiden[R, E, A]`, where the only needed environment is the connection. */
   final def transactionOrWiden[E >: DbException, A](
       zio: ZIO[Connection, E, A],
       commitOnFailure: Boolean = false
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R0, E, A] =
     transaction[E, A](zio, commitOnFailure).mapError(_.fold(identity, identity))
 
-  /** As `transactionR`, but errors when handling the connections are treated as defects instead of failures. */
+  /** As `transaction[R, E, A]`, but errors when handling the connections are treated as defects instead of failures. */
+    final def transactionOrDie[R, E, A](
+        zio: ZIO[Connection with R, E, A],
+        commitOnFailure: Boolean = false
+    )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, E, A] =
+      transaction[R, E, A](zio, commitOnFailure).flatMapError(dieOnLeft)
+
+  /** @deprecated */
+  @deprecated("Prefer method transactionOrDie", since = "2.1.0")
   final def transactionOrDieR[R <: Has[_], E, A](
       zio: ZIO[Connection with R, E, A],
       commitOnFailure: Boolean = false
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, E, A] =
-    transactionR[R, E, A](zio, commitOnFailure).flatMapError(dieOnLeft)
+    transaction[R, E, A](zio, commitOnFailure).flatMapError(dieOnLeft)
 
-  /** As `transactionOrDieR`, where the only needed environment is the connection. */
+  /** As `transactionOrDie[R, E, A]`, where the only needed environment is the connection. */
   final def transactionOrDie[E, A](
       zio: ZIO[Connection, E, A],
       commitOnFailure: Boolean = false
@@ -67,32 +91,53 @@ trait DatabaseOps[Connection, R0] {
    *
    * This method should be implemented by subclasses, to provide the connection.
    */
+  def autoCommit[R, E, A](
+      zio: ZIO[Connection with R, E, A]
+  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, Either[DbException, E], A]
+
+  /** @deprecated */
+  @deprecated("Prefer method autoCommit", since = "2.1.0")
   def autoCommitR[R <: Has[_], E, A](
       zio: ZIO[Connection with R, E, A]
-  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, Either[DbException, E], A]
+  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, Either[DbException, E], A] =
+    autoCommit[R, E, A](zio)
 
   /** As `autoCommitR`, where the only needed environment is the connection. */
   final def autoCommit[E, A](zio: ZIO[Connection, E, A])(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R0, Either[DbException, E], A] =
-    autoCommitR[Has[Unit], E, A](zio).provideSome(mixHasUnit)
+    autoCommit[Has[Unit], E, A](zio).provideSome(mixHasUnit)
 
-  /** As `autoCommitR`, but exceptions are simply widened to a common failure type. The resulting failure type is a
+  /** As `autoCommit[R, E, A]`, but exceptions are simply widened to a common failure type. The resulting failure type is a
    * superclass of both DbException and the error type of the inital ZIO. */
+  final def autoCommitOrWiden[R, E >: DbException, A](
+      zio: ZIO[Connection with R, E, A]
+  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, E, A] =
+    autoCommit[R, E, A](zio).mapError(_.fold(identity, identity))
+
+  /** @deprecated */
+  @deprecated("Prefer method autoCommitOrWiden", since = "2.1.0")
   final def autoCommitOrWidenR[R <: Has[_], E >: DbException, A](
       zio: ZIO[Connection with R, E, A]
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, E, A] =
-    autoCommitR[R, E, A](zio).mapError(_.fold(identity, identity))
+    autoCommit[R, E, A](zio).mapError(_.fold(identity, identity))
 
-  /** As `autoCommitOrWidenR`, where the only needed environment is the connection. */
+  /** As `autoCommitOrWiden[R, E, A]`, where the only needed environment is the connection. */
   final def autoCommitOrWiden[E >: DbException, A](zio: ZIO[Connection, E, A])(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R0, E, A] =
     autoCommit[E, A](zio).mapError(_.fold(identity, identity))
 
-  /** As `autoCommitR`, but errors when handling the connections are treated as defects instead of failures. */
+  /** As `autoCommit[R, E, A]`, but errors when handling the connections are treated as defects instead of failures. */
+  final def autoCommitOrDie[R, E, A](
+      zio: ZIO[Connection with R, E, A]
+  )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent, ev: R <:< Has[_]): ZIO[R with R0, E, A] =
+    autoCommit[R, E, A](zio).flatMapError(dieOnLeft)
+
+  /** @deprecated */
+  @deprecated("Prefer method autoCommitOrDie", since = "2.1.0")
   final def autoCommitOrDieR[R <: Has[_], E, A](
       zio: ZIO[Connection with R, E, A]
   )(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R with R0, E, A] =
-    autoCommitR[R, E, A](zio).flatMapError(dieOnLeft)
+    autoCommit[R, E, A](zio).flatMapError(dieOnLeft)
 
-  /** As `autoCommitOrDieR`, where the only needed environment is the connection. */
+  /** As `autoCommitOrDie[R, E, A]`, where the only needed environment is the connection. */
   final def autoCommitOrDie[E, A](zio: ZIO[Connection, E, A])(implicit errorStrategies: ErrorStrategiesRef = ErrorStrategies.Parent): ZIO[R0, E, A] =
     autoCommit[E, A](zio).flatMapError(dieOnLeft)
 

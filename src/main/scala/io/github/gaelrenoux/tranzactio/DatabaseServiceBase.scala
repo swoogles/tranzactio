@@ -13,19 +13,19 @@ abstract class DatabaseServiceBase[Connection <: Has[_] : Tag](connectionSource:
 
   def connectionFromJdbc(connection: JdbcConnection): ZIO[Any, Nothing, Connection]
 
-  override def transactionR[R <: Has[_], E, A](zio: ZIO[Connection with R, E, A], commitOnFailure: Boolean = false)
-    (implicit errorStrategies: ErrorStrategiesRef): ZIO[R, Either[DbException, E], A] =
+  override def transaction[R, E, A](zio: ZIO[Connection with R, E, A], commitOnFailure: Boolean = false)
+    (implicit errorStrategies: ErrorStrategiesRef, ev: R <:< Has[_]): ZIO[R, Either[DbException, E], A] =
     ZIO.accessM[R] { r =>
       runTransaction({ c: JdbcConnection =>
-        connectionFromJdbc(c).map(r ++ _).flatMap(zio.provide(_))
+        connectionFromJdbc(c).map(r.asInstanceOf[R with Has[_]] ++ _).flatMap(zio.provide(_))
       }, commitOnFailure)
     }
 
-  override def autoCommitR[R <: Has[_], E, A](zio: ZIO[Connection with R, E, A])
-    (implicit errorStrategies: ErrorStrategiesRef): ZIO[R, Either[DbException, E], A] = {
+  override def autoCommit[R, E, A](zio: ZIO[Connection with R, E, A])
+    (implicit errorStrategies: ErrorStrategiesRef, ev: R <:< Has[_]): ZIO[R, Either[DbException, E], A] = {
     ZIO.accessM[R] { r =>
       runAutoCommit { c: JdbcConnection =>
-        connectionFromJdbc(c).map(r ++ _).flatMap(zio.provide(_))
+        connectionFromJdbc(c).map(r.asInstanceOf[R with Has[_]] ++ _).flatMap(zio.provide(_))
       }
     }
   }
